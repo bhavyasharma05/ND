@@ -162,7 +162,7 @@ class Orchestrator:
         try:
             # ── Data queries ──────────────────────────────────────────────────
             if query_type == QueryType.DATA_CURRENT:
-                req = DataRequest(metric="all", days=1, **_REGION)
+                req = DataRequest(metric="all", days=3, **_REGION)
                 result = await data_manager.get_dataset(req)
 
                 # Parse depth/pressure filter from the query

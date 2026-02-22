@@ -50,6 +50,8 @@ class ErddapService:
             constraints += "&temp>-5&temp<40"
         elif metric == "pres":
             constraints += "&pres>=0"
+        else:  # "all" — use temp as a baseline quality gate
+            constraints += "&temp>-5&temp<40"
 
         full_url = f"{base_url}.json?{variables}{constraints}"
         logger.info(f"Fetching ERDDAP (metric={metric}, days={safe_days}): {full_url}")
