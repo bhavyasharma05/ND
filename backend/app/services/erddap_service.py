@@ -3,42 +3,36 @@ from app.config.settings import settings
 from datetime import datetime, timedelta
 import logging
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 class ErddapService:
-    
+
     def __init__(self):
-        # We use settings directly for URL construction to avoid duplication
         pass
 
-    async def fetch_data(self, days: int = 1):
+    async def fetch_data(self, days: int = 1, metric: str = "all"):
         """
         Fetch data from ERDDAP with strict constraints.
-        Restricted to short time windows for testing reliability.
+        The `metric` parameter adds server-side filtering so we get valid rows
+        for that metric — not millions of zero/null rows that get filtered client-side.
         """
-        # Allow up to 90 days (data manager controls the window for adaptive fetching)
         safe_days = min(days, 90)
-        
-        # Calculate time constraint
+
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(days=safe_days)
-        
-        # Format times for ERDDAP (ISO 8601)
+
         time_min = start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
         time_max = end_time.strftime("%Y-%m-%dT%H:%M:%SZ")
-        
-        # STEP 2: REBUILD URL CONSTRUCTION
-        # Base: {SERVER}/erddap/{PROTOCOL}/{DATASET}
-        base_url = f"{settings.ERDDAP_SERVER}/erddap/{settings.ERDDAP_PROTOCOL}/{settings.ERDDAP_DATASET}"
-        
-        # Variables
+
+        base_url = (
+            f"{settings.ERDDAP_SERVER}/erddap/"
+            f"{settings.ERDDAP_PROTOCOL}/{settings.ERDDAP_DATASET}"
+        )
+
         variables = "platform_number,time,latitude,longitude,pres,temp,psal"
-        
-        # Constraints
-        # Note: ERDDAP query strings start with ?variables&constraints
-        query_params = (
-            f".json?{variables}"
+
+        # Base constraints (always applied)
+        constraints = (
             f"&time>={time_min}"
             f"&time<={time_max}"
             f"&latitude>={settings.LAT_MIN}"
@@ -46,14 +40,21 @@ class ErddapService:
             f"&longitude>={settings.LON_MIN}"
             f"&longitude<={settings.LON_MAX}"
         )
-        
-        full_url = f"{base_url}{query_params}"
-        
-        # STEP 5: LOG FINAL URL
-        logger.info(f"Fetching ERDDAP data from: {full_url}")
-        
-        # STEP 4: USE HTTPX CORRECTLY (Disable HTTP/2)
-        async with httpx.AsyncClient(timeout=30.0, http2=False) as client:
+
+        # Metric-specific server-side constraints
+        # These tell ERDDAP to only return rows with valid values for the metric,
+        # so our processor limit of 2000 rows gives us 2000 USEFUL rows.
+        if metric == "psal":
+            constraints += "&psal>10&psal<45"
+        elif metric == "temp":
+            constraints += "&temp>-5&temp<40"
+        elif metric == "pres":
+            constraints += "&pres>=0"
+
+        full_url = f"{base_url}.json?{variables}{constraints}"
+        logger.info(f"Fetching ERDDAP (metric={metric}, days={safe_days}): {full_url}")
+
+        async with httpx.AsyncClient(timeout=45.0, http2=False) as client:
             try:
                 response = await client.get(full_url)
                 response.raise_for_status()

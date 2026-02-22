@@ -71,7 +71,7 @@ class DataManager:
         # ── 2. Fetch from ERDDAP ───────────────────────────────────────────────
         logger.info(f"Cache miss — fetching ERDDAP (metric={request.metric}, "
                     f"days={request.days}, fp={fingerprint[:12]}…)")
-        rows = await self._fetch_and_process(request.days)
+        rows = await self._fetch_and_process(request.days, metric=request.metric)
 
         # ── 3. Validate ────────────────────────────────────────────────────────
         rows = validate_rows(rows, request.metric)
@@ -96,7 +96,7 @@ class DataManager:
                 rows = wider_cached
                 fingerprint = wider_fp
             else:
-                wider_rows = await self._fetch_and_process(SALINITY_ADAPTIVE_DAYS)
+                wider_rows = await self._fetch_and_process(SALINITY_ADAPTIVE_DAYS, metric=request.metric)
                 rows = validate_rows(wider_rows, request.metric)
                 save_snapshot(wider_fp, wider_request.to_dict(), rows)
                 fingerprint = wider_fp
@@ -117,12 +117,12 @@ class DataManager:
             error=error,
         )
 
-    async def _fetch_and_process(self, days: int) -> list:
+    async def _fetch_and_process(self, days: int, metric: str = "all") -> list:
         """
         Internal: fetch raw ERDDAP JSON and convert to list of dicts.
         Returns empty list on failure.
         """
-        raw = await erddap_service.fetch_data(days=days)
+        raw = await erddap_service.fetch_data(days=days, metric=metric)
         if not raw:
             return []
         # processor handles ERDDAP table JSON → list[dict]
