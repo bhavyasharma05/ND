@@ -6,9 +6,9 @@ class MetricResolver:
     """
     
     METRIC_MAP = {
-        "temp": ["temperature", "temp", "heat", "warmth", "celsius"],
-        "psal": ["salinity", "salt", "haline"],
-        "pres": ["pressure", "depth", "bar", "dbar"]
+        "temp": ["temperature", "temp", "heat", "warmth", "celsius", "thermal", "hot", "cold"],
+        "psal": ["salinity", "salt", "haline", "psal", "psu", "saline", "salty", "brine"],
+        "pres": ["pressure", "depth", "bar", "dbar", "pres", "decibar", "deep"],
     }
     
     DEFAULT_METRIC = "temp"
