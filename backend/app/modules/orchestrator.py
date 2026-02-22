@@ -23,6 +23,7 @@ from app.cache.simple_cache import cache
 from app.models.response_model import UnifiedResponse, QueryType
 from app.utils.metric_resolver import metric_resolver
 from app.config.settings import settings
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,36 @@ _REGION = dict(
     lon_min=settings.LON_MIN,
     lon_max=settings.LON_MAX,
 )
+
+
+def _extract_depth_filter(query: str):
+    """
+    Parse depth/pressure constraints from natural language.
+    Returns (min_pres, max_pres) or None if no constraint found.
+
+    Examples:
+      "deeper than 1000 meters"  → (1000, None)
+      "below 500m"               → (500, None)
+      "shallower than 200m"      → (None, 200)
+      "between 100 and 500m"     → (100, 500)
+    """
+    q = query.lower()
+    # "between X and Y meters/m"
+    btw = re.search(r'between\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)\s*(?:m|meters?|dbar)?', q)
+    if btw:
+        return float(btw.group(1)), float(btw.group(2))
+
+    # "deeper than X" / "below X" / "more than X meters deep"
+    deeper = re.search(r'(?:deeper\s+than|below|more\s+than|greater\s+than|over)\s+(\d+(?:\.\d+)?)\s*(?:m|meters?|dbar)?', q)
+    if deeper:
+        return float(deeper.group(1)), None
+
+    # "shallower than X" / "above X" / "less than X meters"
+    shallower = re.search(r'(?:shallower\s+than|above|less\s+than|under)\s+(\d+(?:\.\d+)?)\s*(?:m|meters?|dbar)?', q)
+    if shallower:
+        return None, float(shallower.group(1))
+
+    return None  # no depth filter
 
 
 class Orchestrator:
@@ -133,10 +164,35 @@ class Orchestrator:
             if query_type == QueryType.DATA_CURRENT:
                 req = DataRequest(metric="all", days=1, **_REGION)
                 result = await data_manager.get_dataset(req)
-                metadata["data"] = result.rows
+
+                # Parse depth/pressure filter from the query
+                rows = result.rows
+                depth_filter = _extract_depth_filter(user_query)
+                if depth_filter and rows:
+                    min_pres, max_pres = depth_filter
+                    rows = [
+                        r for r in rows
+                        if r.get("pres") is not None
+                        and (min_pres is None or float(r["pres"]) >= min_pres)
+                        and (max_pres is None or float(r["pres"]) <= max_pres)
+                    ]
+                    logger.info(f"Depth filter pres=[{min_pres},{max_pres}]: {len(rows)} rows")
+
+                metadata["data"] = rows
                 metadata["fingerprint"] = result.fingerprint
                 metadata["source"] = result.source
                 metadata["retrieved_at"] = result.retrieved_at
+
+                # Emit table visualization with top 10 rows
+                if rows:
+                    table_rows = rows[:10]
+                    table_payload = {
+                        "type": "table",
+                        "columns": ["platform_number", "time", "latitude", "longitude", "pres", "temp", "psal"],
+                        "rows": table_rows,
+                        "total": len(rows),
+                    }
+                    yield f"event: visualization\ndata: {json.dumps(table_payload)}\n\n"
 
             elif query_type == QueryType.DATA_TREND:
                 metric_key, metric_label = metric_resolver.resolve(user_query)
@@ -179,12 +235,44 @@ class Orchestrator:
                         yield f"event: chunk\ndata: {json.dumps(chunk)}\n\n"
 
             elif query_type == QueryType.DATA_CURRENT:
-                if metadata.get("source") == "cache":
-                    msg = "Here is the latest Argo float data (served from cache)."
+                rows = metadata.get("data", [])
+                total = len(rows)
+                if total == 0:
+                    msg = "No Argo float observations were found in the Indian Ocean region for today."
+                    for word in msg.split():
+                        yield f"event: chunk\ndata: {json.dumps(word + ' ')}\n\n"
                 else:
-                    msg = "Here is the latest data."
-                for word in msg.split():
-                    yield f"event: chunk\ndata: {json.dumps(word + ' ')}\n\n"
+                    # Summarise the data for the LLM
+                    depth_filter = _extract_depth_filter(user_query)
+                    filter_desc = ""
+                    if depth_filter:
+                        mn, mx = depth_filter
+                        if mn and mx:  filter_desc = f" deeper than {mn} m and shallower than {mx} m"
+                        elif mn:      filter_desc = f" deeper than {mn} m"
+                        elif mx:      filter_desc = f" shallower than {mx} m"
+
+                    temps  = [float(r["temp"]) for r in rows if r.get("temp") is not None]
+                    psals  = [float(r["psal"]) for r in rows if r.get("psal") is not None]
+                    preses = [float(r["pres"]) for r in rows if r.get("pres") is not None]
+
+                    summary = (
+                        f"{total} Argo float observation(s) found{filter_desc}.\n"
+                        f"Temperature: min={round(min(temps),2) if temps else 'N/A'}, "
+                        f"max={round(max(temps),2) if temps else 'N/A'}, "
+                        f"avg={round(sum(temps)/len(temps),2) if temps else 'N/A'} °C\n"
+                        f"Salinity: avg={round(sum(psals)/len(psals),2) if psals else 'N/A'} PSU\n"
+                        f"Pressure: min={round(min(preses),2) if preses else 'N/A'} dbar, "
+                        f"max={round(max(preses),2) if preses else 'N/A'} dbar"
+                    )
+                    analysis_prompt = (
+                        f'The user asked: "{user_query}"\n\n'
+                        f"Here is a summary of the Argo float data retrieved:\n{summary}\n\n"
+                        f"Answer the user's question using this data. Be specific — mention actual numbers. "
+                        f"Keep the answer under 3 sentences. No markdown, no bullet points."
+                    )
+                    async for chunk in llm_service.stream_explanation(analysis_prompt, context=context):
+                        if chunk:
+                            yield f"event: chunk\ndata: {json.dumps(chunk)}\n\n"
 
             elif query_type == QueryType.DATA_TREND:
                 _, label = metric_resolver.resolve(user_query)

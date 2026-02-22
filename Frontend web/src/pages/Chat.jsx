@@ -433,7 +433,7 @@ const Chat = () => {
                                             <p className="whitespace-pre-wrap">{msg.content}</p>
 
                                             {/* Chart Rendering */}
-                                            {msg.meta?.visualization && (
+                                            {msg.meta?.visualization?.type === 'line_chart' && (
                                                 <div className="mt-4 h-64 w-full min-w-[300px]">
                                                     <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">
                                                         {msg.meta.visualization.metric || 'Trend Analysis'}
@@ -465,6 +465,37 @@ const Chat = () => {
                                                             />
                                                         </LineChart>
                                                     </ResponsiveContainer>
+                                                </div>
+                                            )}
+
+                                            {/* Table Rendering for DATA_CURRENT */}
+                                            {msg.meta?.visualization?.type === 'table' && (
+                                                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-700">
+                                                    <p className="text-xs font-semibold text-slate-400 px-3 pt-2 pb-1 uppercase tracking-wider">
+                                                        Argo Float Data &bull; top {msg.meta.visualization.rows?.length} of {msg.meta.visualization.total} observations
+                                                    </p>
+                                                    <table className="w-full text-[11px] text-slate-600 dark:text-slate-300">
+                                                        <thead>
+                                                            <tr className="bg-slate-50 dark:bg-slate-800/60 text-left">
+                                                                {['Float ID', 'Date', 'Lat', 'Lon', 'Depth (dbar)', 'Temp (°C)', 'Sal (PSU)'].map(h => (
+                                                                    <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">{h}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {msg.meta.visualization.rows?.map((row, i) => (
+                                                                <tr key={i} className={`border-t border-slate-100 dark:border-slate-700/50 ${i % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/20' : ''}`}>
+                                                                    <td className="px-3 py-1.5 font-mono">{row.platform_number ?? '—'}</td>
+                                                                    <td className="px-3 py-1.5 whitespace-nowrap">{row.time ? new Date(row.time).toLocaleDateString() : '—'}</td>
+                                                                    <td className="px-3 py-1.5">{row.latitude != null ? Number(row.latitude).toFixed(2) : '—'}</td>
+                                                                    <td className="px-3 py-1.5">{row.longitude != null ? Number(row.longitude).toFixed(2) : '—'}</td>
+                                                                    <td className="px-3 py-1.5 font-semibold text-blue-500">{row.pres != null ? Number(row.pres).toFixed(1) : '—'}</td>
+                                                                    <td className="px-3 py-1.5 text-orange-500">{row.temp != null ? Number(row.temp).toFixed(2) : '—'}</td>
+                                                                    <td className="px-3 py-1.5 text-teal-500">{row.psal != null ? Number(row.psal).toFixed(2) : '—'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
                                                 </div>
                                             )}
                                         </div>
