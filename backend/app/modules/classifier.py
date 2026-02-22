@@ -11,73 +11,87 @@ class QueryClassifier:
         }
         
         self.trend_indicators = {
-            "trend", "change", "over time", "history", "past", "last", "variation", 
-            "average", "month", "week", "year"
+            # Explicit trend words
+            "trend", "change", "over time", "history", "historical", "past", "variation",
+            "average", "month", "week", "year", "daily", "monthly", "weekly",
+            # Comparative / analytical language
+            "compare", "compared", "comparison", "versus", "vs",
+            "previous", "prior", "last", "recent", "lately",
+            "normal", "abnormal", "unusual", "anomaly", "anomalous",
+            "rising", "falling", "increasing", "decreasing", "fluctuation",
+            "higher", "lower", "warmer", "cooler", "hotter", "colder",
+            "pattern", "seasonal", "forecast", "days", "months", "years",
         }
-        
+
         self.data_verbs = {
-            "show", "list", "get", "fetch", "display", "give", "find", "see"
+            "show", "list", "get", "fetch", "display", "give", "find", "see",
+            # Implicit question verbs that imply data lookup
+            "is", "are", "was", "were", "has", "have",
         }
-        
+
         self.ocean_terms = {
-            "float", "argo", "temperature", "salinity", "depth", "ocean", 
-            "profile", "location", "pressure", "psal", "temp", "water"
+            "float", "argo", "temperature", "salinity", "depth", "ocean",
+            "profile", "location", "pressure", "psal", "temp", "water",
+            "sea", "marine", "surface", "deep",
         }
-        
+
         self.info_indicators = {
-            "what", "why", "explain", "define", "how", "meaning", "concept"
+            "what", "why", "explain", "define", "how", "meaning", "concept",
+            "describe",
+        }
+
+        self.data_scope_terms = {
+            "latest", "current", "now", "today", "live",
+            "data", "readings", "measurements", "observations", "status",
         }
 
     def _normalize(self, text: str) -> str:
         """Lowercase and remove punctuation."""
         text = text.lower()
-        # Remove punctuation
         text = text.translate(str.maketrans("", "", string.punctuation))
         return text.strip()
 
     def classify(self, query: str) -> QueryType:
         """
         Classifies the user query based on intent signals.
-        Order: Greeting -> Trend -> Data -> Info -> Unknown
+        Priority: Greeting → INFO → Trend → Data_Current → Unknown
+        INFO is checked before Data to avoid "what is salinity" → DATA_CURRENT.
         """
         clean_query = self._normalize(query)
         words = set(clean_query.split())
-        
-        # 1. Greeting Detection
-        # Check if the query consists MAINLY of greetings or starts with one
-        # If it's just "hi" or "hello", perfectly greeting.
+
+        # 1. Greeting
         if clean_query in self.greetings:
             return QueryType.GREETING
-        
-        # 2. Trend Detection
-        # Needs to have a trend indicator AND an ocean term usually, but user said strict order.
-        # "temperature trend last week" -> data_trend
-        if any(word in self.trend_indicators for word in words):
-            # trends usually imply data unless explicitly asking "what is a trend"
-            # But let's check for info indicators too. If "what is trend", it's INFO.
-            if not any(word in self.info_indicators for word in words):
-                return QueryType.DATA_TREND
-            
-        # 3. Data Detection (Action + Domain Term)
-        has_verb = any(word in self.data_verbs for word in words)
-        has_term = any(word in self.ocean_terms for word in words) or "floats" in clean_query
-        
-        if has_verb and has_term:
-            return QueryType.DATA_CURRENT
 
-        # 4. Data Detection (Implicit Domain Mention)
-        # "floats near india" -> No verb, but has 'floats'
-        if has_term:
-            # If it doesn't look like an info question
-            if not any(word in self.info_indicators for word in words):
-                 return QueryType.DATA_CURRENT
+        has_info  = any(word in self.info_indicators for word in words)
+        has_trend = any(word in self.trend_indicators for word in words)
+        has_verb  = any(word in self.data_verbs for word in words)
+        has_term  = any(word in self.ocean_terms for word in words) or "floats" in clean_query
+        has_scope = any(word in self.data_scope_terms for word in words)
 
-        # 5. Info Detection
-        # "what is thermocline"
-        if any(word in self.info_indicators for word in words):
+        # 2. INFO: "what is salinity", "explain thermocline", "how does pressure work"
+        #    Only goes to INFO if no strong trend signal alongside it.
+        if has_info and not has_trend:
             return QueryType.INFO
 
-        # 6. Unknown Fallback
+        # 3. Trend: comparative/temporal language with an ocean or data term
+        if has_trend and (has_term or has_scope or not has_info):
+            return QueryType.DATA_TREND
+
+        # 4. Data_Current: explicit action verb + ocean/scope term
+        if has_verb and (has_term or has_scope):
+            return QueryType.DATA_CURRENT
+
+        # 5. Implicit Data_Current: ocean term or scope term alone (no info/trend words)
+        if (has_term or has_scope) and not has_info:
+            return QueryType.DATA_CURRENT
+
+        # 6. INFO fallback
+        if has_info:
+            return QueryType.INFO
+
+        # 7. Unknown
         return QueryType.UNKNOWN
 
 classifier = QueryClassifier()
