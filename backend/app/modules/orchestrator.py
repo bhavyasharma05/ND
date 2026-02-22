@@ -162,7 +162,11 @@ class Orchestrator:
         try:
             # ── Data queries ──────────────────────────────────────────────────
             if query_type == QueryType.DATA_CURRENT:
-                req = DataRequest(metric="all", days=3, **_REGION)
+                # If user asks globally, drop the Indian Ocean bounding box
+                q_lower = user_query.lower()
+                is_global = any(w in q_lower for w in ("global", "globally", "worldwide", "anywhere"))
+                req = DataRequest(metric="all", days=3, global_scope=is_global,
+                                  **({} if is_global else _REGION))
                 result = await data_manager.get_dataset(req)
 
                 # Parse depth/pressure filter from the query

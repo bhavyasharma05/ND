@@ -21,6 +21,7 @@ class DataRequest:
     lat_max: float = settings.LAT_MAX
     lon_min: float = settings.LON_MIN
     lon_max: float = settings.LON_MAX
+    global_scope: bool = False   # True = no lat/lon bounding box
 
     def to_dict(self) -> dict:
         return asdict(self)

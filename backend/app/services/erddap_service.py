@@ -10,7 +10,9 @@ class ErddapService:
     def __init__(self):
         pass
 
-    async def fetch_data(self, days: int = 1, metric: str = "all"):
+    async def fetch_data(self, days: int = 1, metric: str = "all",
+                         lat_min=None, lat_max=None, lon_min=None, lon_max=None,
+                         global_scope: bool = False):
         """
         Fetch data from ERDDAP with strict constraints.
         The `metric` parameter adds server-side filtering so we get valid rows
@@ -35,11 +37,19 @@ class ErddapService:
         constraints = (
             f"&time>={time_min}"
             f"&time<={time_max}"
-            f"&latitude>={settings.LAT_MIN}"
-            f"&latitude<={settings.LAT_MAX}"
-            f"&longitude>={settings.LON_MIN}"
-            f"&longitude<={settings.LON_MAX}"
         )
+        # Region constraints — omitted for global queries
+        if not global_scope:
+            _lat_min = lat_min if lat_min is not None else settings.LAT_MIN
+            _lat_max = lat_max if lat_max is not None else settings.LAT_MAX
+            _lon_min = lon_min if lon_min is not None else settings.LON_MIN
+            _lon_max = lon_max if lon_max is not None else settings.LON_MAX
+            constraints += (
+                f"&latitude>={_lat_min}"
+                f"&latitude<={_lat_max}"
+                f"&longitude>={_lon_min}"
+                f"&longitude<={_lon_max}"
+            )
 
         # Metric-specific server-side constraints
         # These tell ERDDAP to only return rows with valid values for the metric,

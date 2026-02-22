@@ -11,16 +11,18 @@ class QueryClassifier:
         }
         
         self.trend_indicators = {
-            # Explicit trend words
+            # Explicit trend words — require a time span to be meaningful
             "trend", "change", "over time", "history", "historical", "past", "variation",
-            "average", "month", "week", "year", "daily", "monthly", "weekly",
+            "average", "monthly", "weekly",
+            # Time-span words (signals user wants data OVER a period)
+            "month", "week", "year", "days", "months", "years",
             # Comparative / analytical language
             "compare", "compared", "comparison", "versus", "vs",
-            "previous", "prior", "last", "recent", "lately",
+            "previous", "prior",
             "normal", "abnormal", "unusual", "anomaly", "anomalous",
             "rising", "falling", "increasing", "decreasing", "fluctuation",
             "higher", "lower", "warmer", "cooler", "hotter", "colder",
-            "pattern", "seasonal", "forecast", "days", "months", "years",
+            "pattern", "seasonal", "forecast",
         }
 
         self.data_verbs = {
@@ -42,7 +44,11 @@ class QueryClassifier:
 
         self.data_scope_terms = {
             "latest", "current", "now", "today", "live",
-            "data", "readings", "measurements", "observations", "status",
+            # Recency words that mean 'most recent', NOT a time series
+            "recent", "last", "lately", "newest", "just",
+            "data", "readings", "measurements", "measurement", "observations", "status",
+            # Geographic scope
+            "globally", "worldwide", "global", "anywhere", "all",
         }
 
     def _normalize(self, text: str) -> str:
