@@ -1,3 +1,6 @@
+# Snapshot cache (ephemeral data files)
+backend/data_cache/
+
 # Environment variables - NEVER commit these
 .env
 .env.*
