@@ -449,6 +449,11 @@ const Chat = () => {
                                                             <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10 }} width={30} />
                                                             <Tooltip
                                                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                                                formatter={(value) => [
+                                                                    typeof value === 'number' ? value.toFixed(2) : value,
+                                                                    msg.meta.visualization.metric || msg.meta.visualization.dataKey
+                                                                ]}
+                                                                labelFormatter={(label) => new Date(label).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
                                                             />
                                                             <Line
                                                                 type="monotone"

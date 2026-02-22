@@ -196,14 +196,46 @@ class Orchestrator:
                         f"The Indian Ocean Argo float network may have sparse "
                         f"{label.lower()} coverage in this area. Try asking about temperature instead."
                     )
+                    for word in msg.split():
+                        yield f"event: chunk\ndata: {json.dumps(word + ' ')}\n\n"
                 else:
-                    source_note = " (from cache)" if metadata.get("source") == "cache" else ""
-                    msg = (
-                        f"I've analysed the {label.lower()} trends for you{source_note}. "
-                        f"The chart shows the fluctuation over the last 30 days."
-                    )
-                for word in msg.split():
-                    yield f"event: chunk\ndata: {json.dumps(word + ' ')}\n\n"
+                    # Compute stats from the trend data to pass to LLM
+                    td = metadata["data"]
+                    data_key = {
+                        "temp": "avg_temp",
+                        "psal": "avg_salinity",
+                        "pres": "avg_pressure",
+                    }.get(metric_key, "avg_temp")
+
+                    values = [p[data_key] for p in td if p.get(data_key) is not None]
+                    if values:
+                        first_val = values[0]
+                        last_val  = values[-1]
+                        trend_dir = (
+                            "rising" if last_val > first_val + 0.5 else
+                            "falling" if last_val < first_val - 0.5 else
+                            "stable"
+                        )
+                        stats = {
+                            "min":       round(min(values), 2),
+                            "max":       round(max(values), 2),
+                            "avg":       round(sum(values) / len(values), 2),
+                            "latest":    round(last_val, 2),
+                            "trend":     trend_dir,
+                            "date_from": td[0]["date"],
+                            "date_to":   td[-1]["date"],
+                            "days":      len(td),
+                        }
+                        async for chunk in llm_service.stream_data_analysis(
+                            user_query, label, stats, context=context
+                        ):
+                            if chunk:
+                                yield f"event: chunk\ndata: {json.dumps(chunk)}\n\n"
+                    else:
+                        msg = f"The chart is displayed above. No numeric {label.lower()} values were available for analysis."
+                        for word in msg.split():
+                            yield f"event: chunk\ndata: {json.dumps(word + ' ')}\n\n"
+
 
             elif query_type == QueryType.GREETING:
                 msg = "Hello! I am Neel Drishti, your oceanographic assistant. How can I help you today?"
