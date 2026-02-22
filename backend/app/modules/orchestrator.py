@@ -151,7 +151,10 @@ class Orchestrator:
                 }
                 viz_data_key = data_key_map.get(metric_key, "avg_temp")
 
+                logger.info(f"Trend rows after DML: {len(result.rows)} (metric={metric_key}, source={result.source})")
                 trend_data = trend_service.generate_trends(result.rows) if not result.error else []
+                logger.info(f"Trend points generated: {len(trend_data)}")
+
                 metadata["data"] = trend_data
                 metadata["fingerprint"] = result.fingerprint
                 metadata["source"] = result.source
@@ -185,11 +188,20 @@ class Orchestrator:
 
             elif query_type == QueryType.DATA_TREND:
                 _, label = metric_resolver.resolve(user_query)
-                source_note = " (from cache)" if metadata.get("source") == "cache" else ""
-                msg = (
-                    f"I've analysed the {label.lower()} trends for you{source_note}. "
-                    f"The chart shows the fluctuation over the last 30 days."
-                )
+                if not metadata.get("data"):
+                    # No data found — give a helpful explanation
+                    msg = (
+                        f"I couldn't find enough {label.lower()} observations in the current "
+                        f"region over the last 30 days to generate a trend. "
+                        f"The Indian Ocean Argo float network may have sparse "
+                        f"{label.lower()} coverage in this area. Try asking about temperature instead."
+                    )
+                else:
+                    source_note = " (from cache)" if metadata.get("source") == "cache" else ""
+                    msg = (
+                        f"I've analysed the {label.lower()} trends for you{source_note}. "
+                        f"The chart shows the fluctuation over the last 30 days."
+                    )
                 for word in msg.split():
                     yield f"event: chunk\ndata: {json.dumps(word + ' ')}\n\n"
 

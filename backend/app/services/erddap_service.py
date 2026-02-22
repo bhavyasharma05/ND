@@ -17,8 +17,8 @@ class ErddapService:
         Fetch data from ERDDAP with strict constraints.
         Restricted to short time windows for testing reliability.
         """
-        # STEP 3: STRICT TIME WINDOW (Max 30 days for trends)
-        safe_days = min(days, 30) 
+        # Allow up to 90 days (data manager controls the window for adaptive fetching)
+        safe_days = min(days, 90)
         
         # Calculate time constraint
         end_time = datetime.utcnow()
