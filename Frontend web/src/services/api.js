@@ -10,13 +10,13 @@ const getAuthHeaders = async () => {
     };
 };
 
-// Helper to consume one-time data from SSE stream (for data fetching)
+// Helper to consume one-time data from SSE stream (for data fetching — does NOT create a chat session)
 const fetchSSEData = async (query) => {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/query`, {
         method: "POST",
         headers: headers,
-        body: JSON.stringify({ query })
+        body: JSON.stringify({ query, save_to_history: false })  // ← never creates a session
     });
 
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);

@@ -11,6 +11,7 @@ router = APIRouter()
 class QueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = None
+    save_to_history: bool = True  # Set False for data-fetch calls (Dashboard, ArgoExplorer)
 
 from fastapi.responses import StreamingResponse
 import json
@@ -44,14 +45,11 @@ async def handle_query(
         except Exception:
             pass # Fallback to default or fail gracefully
 
-    # 1. Manage Session 
-    if not session_id:
-        # For new session created here, use the generator directly!
+    # 1. Manage Session (only for real chat interactions, not data-fetch calls)
+    if not session_id and request.save_to_history:
         title = generate_title(request.query)
         try:
-            # Run sync DB call in threadpool
             from fastapi.concurrency import run_in_threadpool
-            # Pass user_client
             session_id = await run_in_threadpool(chat_repo.create_session, user_id, title, user_client)
         except Exception as e:
             print(f"Session creation failed: {e}")
