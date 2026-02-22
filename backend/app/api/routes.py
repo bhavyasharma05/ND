@@ -45,28 +45,19 @@ async def handle_query(
         except Exception:
             pass # Fallback to default or fail gracefully
 
-    # 1. Manage Session (only for real chat interactions, not data-fetch calls)
-    if not session_id and request.save_to_history:
-        title = generate_title(request.query)
+    # Sessions are ONLY created by the frontend (Chat.jsx).
+    # The backend NEVER auto-creates sessions — it only saves messages
+    # when a valid session_id is provided AND save_to_history is True.
+
+    # 1. Save user message + auto-update title (chat interactions only)
+    if session_id and request.save_to_history:
         try:
             from fastapi.concurrency import run_in_threadpool
-            session_id = await run_in_threadpool(chat_repo.create_session, user_id, title, user_client)
-        except Exception as e:
-            print(f"Session creation failed: {e}")
-            session_id = None
-    
-    # 2. Store User Message (Synchronous/Awaited for Persistence)
-    if session_id:
-        try:
-            from fastapi.concurrency import run_in_threadpool
-            # Save user message immediately so it exists in DB before we process and reply
             await run_in_threadpool(chat_repo.save_message, session_id, "user", request.query, None, user_client)
         except Exception as e:
             print(f"Failed to save user message: {e}")
-            
-        # Check and update title if needed (background is fine for this)
-        
-        # Check and update title if needed (for sessions created by frontend with "New Chat" or placeholder)
+
+        # Auto-update title if still "New Chat" (background task — non-blocking)
         async def check_and_update_title(sid, uid, message, client):
             try:
                 current_title = chat_repo.get_session_title(sid, client)
@@ -78,9 +69,9 @@ async def handle_query(
 
         background_tasks.add_task(check_and_update_title, session_id, user_id, request.query, user_client)
 
-    # 3. Retrieve Context
+    # 2. Retrieve recent context for LLM
     context_messages = []
-    if session_id:
+    if session_id and request.save_to_history:
         try:
             from fastapi.concurrency import run_in_threadpool
             context_messages = await run_in_threadpool(chat_repo.get_recent_messages, session_id, 5, user_client)
